@@ -1,0 +1,5 @@
+{
+  "Mira": {"Gruff": 60, "Rex": 40},
+  "Gruff": {"Mira": 50, "Rex": 60},
+  "Rex": {"Mira": 30, "Gruff": 60}
+}

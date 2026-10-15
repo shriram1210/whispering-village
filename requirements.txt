@@ -1,0 +1,7 @@
+python-dotenv
+google-genai
+pygame-ce  # pygame 2.6 has no Python 3.14 wheel; pygame-ce 2.5.8 provides the same `import pygame`
+sounddevice      # mic recording (optional: typing still works without it)
+SpeechRecognition  # free Google speech-to-text (optional)
+vaderSentiment   # text sentiment for voice-expression fusion (optional)
+vosk  # offline speech-to-text fallback; one-time model in assets/vosk-model (~40MB)
