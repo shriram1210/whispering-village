@@ -1,7 +1,63 @@
 # Python
 __pycache__/
 *.pyc
-*.env
-/demo/
+*.pyo
+*.pyd
+.env
+*.env.local
+
+# Demo outputs
+demo/*.png
+demo/*.jpg
+demo/*.mp4
+demo/*.pptx
+
+# Voice model
 vosk-model*
+
+# Virtual environment
 .venv/
+venv/
+env/
+
+# SQLite databases (keep only the .db structure if needed, exclude runtime files)
+*.db-shm
+*.db-wal
+*.db
+
+# Unity (gitignore from unity.gitignore)
+Library/
+ProjectSettings/
+UserSettings/
+*.csproj
+*.sln
+*.user
+*.suo
+
+# PyInstaller
+*.manifest
+*.exe
+
+# Distribution
+dist/
+build/
+
+# Top-level unrelated projects
+EchoesOfEldoria/
+KEA_Notes/
+ai-mobility-travel-companion.html
+ai_explainer_cartoon.py
+ai-mobility-travel-companion.html
+bengaluru-mobility-agent-n8n.workflow.json
+chat2_full_transcript.md
+chat2_message_index.md
+client/
+cold-email-playbook.md
+cold-emails-batch1.md
+csat_formula_book/
+data-platform/
+generate_top150_v2.py
+generate_top150.py
+generate_cheatsheet.py
+server/
+youtube-trending-pipeline/
