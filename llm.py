@@ -1,13 +1,35 @@
 """llm.py - the only file that talks to the AI.
 Robust by design: tries several model names, has a timeout, and never crashes the game.
-If anything fails, `last_error` explains why and the NPCs switch to built-in offline replies."""
+If anything fails, `last_error` explains why and the NPCs switch to built-in offline replies.
+Supports multiple API keys with automatic failover: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3...
+"""
 import os
 import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
+# Collect all Gemini API keys in order: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3...
+def _collect_gemini_keys():
+    keys = []
+    # Primary key
+    primary = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
+    if primary:
+        keys.append(primary)
+    # Numbered fallback keys
+    i = 2
+    while True:
+        key = os.getenv(f"GEMINI_API_KEY_{i}", "").strip().strip('"').strip("'")
+        if not key:
+            break
+        keys.append(key)
+        i += 1
+    return keys
+
+GEMINI_KEYS = _collect_gemini_keys()
+API_KEY = GEMINI_KEYS[0] if GEMINI_KEYS else ""
+_key_index = 0  # current key being tried
+
 # Your .env MODEL_NAME is tried first, then these (gemini-2.5-flash is being retired by Google).
 _env_model = os.getenv("MODEL_NAME", "").strip()
 MODELS = list(dict.fromkeys(m for m in (_env_model, "gemini-3.5-flash",
@@ -31,8 +53,8 @@ OCODE_ORG = os.getenv("OPENCODE_ORG_ID", "").strip()
 if _env_model and "gemini" not in _env_model.lower():
     print(f"[llm] MODEL_NAME '{_env_model}' is not a Gemini model. "
           f"Use e.g. gemini-3.5-flash (or delete the line to use the built-in list).")
-# Google AI Studio keys start with 'AIza'. Anything else (OpenCode, OpenRouter…)
-# is rejected by Google with 400/401 — detect early so the message is actionable.
+# Google AI Studio keys start with 'AIza'. Anything else (OpenCode, OpenRouter...)
+# is rejected by Google with 400/401 - detect early so the message is actionable.
 _KEY_HINT = ""
 if API_KEY and not API_KEY.startswith("AIza"):
     _KEY_HINT = ("That key does not look like a Google AI Studio key (Google keys start with 'AIza'). "
@@ -44,17 +66,38 @@ _good_model = None
 _client = None
 types = None
 
-try:
-    from google import genai
-    from google.genai import types
-    if API_KEY:
-        _client = genai.Client(api_key=API_KEY, http_options=types.HttpOptions(timeout=TIMEOUT_MS))
-    else:
-        last_error = "No GEMINI_API_KEY found. Check your .env file."
-except ImportError:
-    last_error = "google-genai is not installed. Run: pip install google-genai"
-except Exception as e:
-    last_error = f"Could not start AI client: {e}"
+def _init_client(key: str):
+    """Initialize genai client with given key."""
+    global _client, last_error, types
+    try:
+        from google import genai
+        from google.genai import types as _types
+        types = _types
+        _client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=TIMEOUT_MS))
+        last_error = ""
+        return True
+    except ImportError:
+        last_error = "google-genai is not installed. Run: pip install google-genai"
+        return False
+    except Exception as e:
+        last_error = f"Could not start AI client: {e}"
+        return False
+
+def _try_next_key() -> bool:
+    """Switch to next available Gemini key. Returns True if switched, False if exhausted."""
+    global _key_index, API_KEY
+    if _key_index + 1 < len(GEMINI_KEYS):
+        _key_index += 1
+        API_KEY = GEMINI_KEYS[_key_index]
+        print(f"[llm] Switching to GEMINI_API_KEY_{_key_index + 1}")
+        return _init_client(API_KEY)
+    return False
+
+# Initialize with first key
+if GEMINI_KEYS:
+    _init_client(API_KEY)
+else:
+    last_error = "No GEMINI_API_KEY found. Check your .env file."
 
 _FATAL = ("api key", "api_key", "permission", "unauthenticated", "401", "403", "429", "quota",
           "timed out", "timeout", "deadline", "connect", "network", "resolve")
@@ -149,7 +192,7 @@ def _ocode_call(system_prompt: str, user_prompt: str):
 
 def ask_json(system_prompt: str, user_prompt: str):
     """Returns a dict, or None on failure (see `last_error`)."""
-    global last_error, _good_model
+    global last_error, _good_model, _key_index, API_KEY
     if PROVIDER == "opencode":
         return _ocode_call(system_prompt, user_prompt)
     if _client is None:
@@ -173,10 +216,15 @@ def ask_json(system_prompt: str, user_prompt: str):
             except Exception as e:
                 last_error = f"{model}: {str(e)[:140]}"
                 print("[llm]", last_error)
+                # Check for fatal errors (quota, auth, network) - try next API key
                 if any(k in str(e).lower() for k in _FATAL):
                     if _KEY_HINT and any(k in str(e).lower() for k in ("api key", "api_key", "401", "403", "400")):
                         last_error += " | " + _KEY_HINT
                         print("[llm]", _KEY_HINT)
-                    return None                              # key/quota/network problem: other models won't help
-                break                                        # model problem: try the next model name
+                    # Try next API key if available
+                    if _try_next_key():
+                        # Retry with new key
+                        continue
+                    return None  # all keys exhausted
+                break  # model problem: try the next model name
     return None
