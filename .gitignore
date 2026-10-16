@@ -29,6 +29,9 @@ env/
 Library/
 ProjectSettings/
 UserSettings/
+Assets/
+Logs/
+Packages/
 *.csproj
 *.sln
 *.user
